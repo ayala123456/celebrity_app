@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Celebrity Lookalike Finder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            background: #f0f4ff;
+            border-color: #764ba2;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+
+        .preview-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 10px;
+            display: none;
+            margin: 0 auto;
+        }
+
+        .analyze-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .result-item {
+            background: #f8f9ff;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .celebrity-name {
+            font-size: 1.3em;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .percentage {
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .error {
+            display: none;
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+    </style>
+    
+      <!-- PWA setup -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#ffffff" />
+
+  <!-- register service worker -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js");
+    }
+  </script>
+
+</head>
+<body>
+    <div class="container">
+        <h1>🌟 Celebrity Twin Finder 🌟</h1>
+        <p class="subtitle">Upload your photo and discover which celebrities you resemble!</p>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📸</div>
+            <div style="color:#667eea; font-size:1.2em; font-weight:bold;">Click to upload your photo</div>
+        </div>
+
+        <input type="file" id="fileInput" accept="image/*">
+
+        <div class="preview-container">
+            <img id="preview" alt="Preview">
+        </div>
+
+        <button class="analyze-btn" id="analyzeBtn">
+            Find My Celebrity Twin! ✨
+        </button>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top:15px; color:#667eea; font-weight:bold;">Analyzing your face...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        var geminiApiKey = 'AIzaSyAWgCeFJUAbbpEwBrBmdo14z3pVmnHaRL8';
+        var selectedImage = null;
+
+        document.getElementById('uploadArea').addEventListener('click', function() {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            var file = e.target.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedImage = e.target.result;
+                    document.getElementById('preview').src = selectedImage;
+                    document.getElementById('preview').style.display = 'block';
+                    document.getElementById('analyzeBtn').style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('analyzeBtn').addEventListener('click', function() {
+            analyzeFace();
+        });
+
+        function analyzeFace() {
+            if (!selectedImage) {
+                showError('Please upload a photo first!');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+
+            var base64Data = selectedImage.split(',')[1];
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + geminiApiKey);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            
+            xhr.onload = function() {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('analyzeBtn').disabled = false;
+                
+                if (xhr.status === 200) {
+                    var data = JSON.parse(xhr.responseText);
+                    console.log('Success!', data);
+                    if (data.candidates && data.candidates[0]) {
+                        var resultText = data.candidates[0].content.parts[0].text;
+                        displayResults(resultText);
+                    }
+                } else {
+                    showError('Error: ' + xhr.status + ' - ' + xhr.responseText);
+                    console.error('Error:', xhr.responseText);
+                }
+            };
+            
+            xhr.onerror = function() {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('analyzeBtn').disabled = false;
+                showError('Network error occurred');
+            };
+            
+            var requestData = {
+                contents: [{
+                    parts: [
+                        {text: "Analyze this person's facial features and tell me 5 celebrities they resemble. Give percentages 65-92%. Format: Celebrity Name - XX%"},
+                        {inline_data: {mime_type: "image/jpeg", data: base64Data}}
+                    ]
+                }]
+            };
+            
+            xhr.send(JSON.stringify(requestData));
+        }
+
+        function displayResults(text) {
+            var resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<h2 style="color:#667eea; margin-bottom:20px;">Your Celebrity Matches! 🎬</h2>';
+
+            var lines = text.split('\n');
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                if (line && line.includes('-')) {
+                    var match = line.match(/(.+?)\s*-\s*(\d+)%/);
+                    if (match) {
+                        var div = document.createElement('div');
+                        div.className = 'result-item';
+                        div.innerHTML = '<span class="celebrity-name">' + match[1].trim().replace(/^\d+\.\s*/, '') + '</span><span class="percentage">' + match[2] + '%</span>';
+                        resultsDiv.appendChild(div);
+                    }
+                }
+            }
+
+            resultsDiv.style.display = 'block';
+        }
+
+        function showError(message) {
+            document.getElementById('error').textContent = message;
+            document.getElementById('error').style.display = 'block';
+        }
+    </script>
+
+    <!-- your other HTML ... -->
+
+<script src="script.js"></script>
+</body>
+</html>
+
+</body>
+</html>
